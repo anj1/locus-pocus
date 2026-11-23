@@ -9,9 +9,10 @@ This Lean 4 project constructs sign-invariant cylindrical decompositions for sev
 | One equation `a(x)y² + b(x)y + c(x) = 0`, with rational polynomial coefficients of any degree in `x` | Project the three coefficients and their discriminant, then classify each base cell | A fiber-preserving homeomorphism of the cylinder identifies the family on each cell with a fixed model. The model is empty, a point, two points, or the whole line. |
 | Finite lists of real bivariate polynomials | Squarefree projection, univariate root isolation over ℝ, and continuous root lifting. | Every point lies in exactly one cell, all input signs are constant on each cell, and the cells project cylindrically. Each cell is homeomorphic to a product of two real intervals or points. |
 | Two real quadric equations in three variables | Exact vertical fiber decisions with specialized planar fast paths and the general planar CAD as a fallback. | The cells partition the intersection. Each has a sample and is contractible. Certified closure incidences determine the connected components of the whole intersection. |
+| Two real polynomial equations of total degree at most four in three variables | Fraction-free vertical decisions, a planar CAD for the coefficient tests, and continuous lifting of the common roots. | An exact cylindrical partition of the intersection. Each cell has a sample and a product model. Checked closure incidences give the connected components. |
 | Univariate formulas with arbitrary real coefficients | Lean's mathematical root multiset and a one-dimensional CAD | A total, noncomputable specification with an exact solution-set theorem. |
 
-The general planar and quadric decompositions are total, noncomputable Lean constructions. The checked pipeline accepts root tables and closure incidences from a backend. A standalone executable backend for general real-algebraic root isolation and closure incidence, and automatic refinement to a stratification satisfying the frontier condition, remain open.
+The general planar, quadric, and quartic decompositions are total, noncomputable Lean constructions. The checked pipeline accepts root tables and closure incidences from a backend. A standalone executable backend for general real-algebraic root isolation and closure incidence, and automatic refinement to a stratification satisfying the frontier condition, remain open.
 
 ## Run
 
@@ -23,6 +24,7 @@ lake build
 lake env lean examples/Affine.lean
 lake env lean examples/Plane.lean
 lake env lean examples/QuadricIntersection.lean
+lake env lean examples/QuarticIntersection.lean
 python3 scripts/univariate.py examples/shared-roots.json
 python3 scripts/univariate.py --quadratic-family examples/cusp.json --lean /tmp/Cusp.lean
 lake env lean /tmp/Cusp.lean
@@ -130,6 +132,72 @@ linear branch uses the determinant of the two linear equations and handles
 vanishing slopes separately. Constant tests are discharged before planar
 projection. The implementation describes real loci, including inputs whose
 coefficients are embedded real algebraic numbers.
+
+### Quadric stress examples
+
+[The 12-panel plot gallery](examples/quadric-stress.pdf) includes a smooth
+spatial loop, Viviani’s nodal curve, a circle with an isolated point, crossing
+lines and circles, a shared plane, coincident spheres, and a near-tangent
+sphere sweep. It also shows a mixed quartic projection and a degree drop
+whose neighboring branches escape to infinity.
+
+Run the existing quadric examples and regenerate the gallery with Lean,
+NumPy, and Matplotlib.
+
+```bash
+source ~/src/lean/env.sh
+lake build
+lake env lean examples/QuadricIntersection.lean
+lake env lean --run examples/QuadricStress.lean > /tmp/quadric-stress-inputs.json
+python3 examples/plot_quadric_stress.py /tmp/quadric-stress-inputs.json examples/quadric-stress.pdf
+```
+
+`QuadricStress.lean` runs exact rational fiber assertions and checks
+whole-locus theorems for the real CAD. It verifies the degree-drop projection
+and proves that the disjoint spheres give an empty cell list. The full real
+CAD is noncomputable. The renderer samples analytic parametrizations, checks
+the samples against the two equation vectors emitted by Lean, and clips
+unbounded branches to the plot windows.
+
+## Quartic intersections
+
+Use `Quartic.Equation.ofTerms` to supply sparse monomials. A term stores its
+exponents in the order `x, y, z`, then its coefficient and a proof that
+the exponents sum to at most four. For example, the term
+`⟨2, 0, 2, -2, by decide⟩` denotes `−2x²z²`. A point in the real locus
+has the form `((x, y), z)`.
+
+- `Quartic.decomposeOver ι q r` accepts equations over a field embedded in
+  ℝ. Use `decomposeRealAlg` for real algebraic coefficients or
+  `decompose` for real coefficients. The coverage and uniqueness theorems
+  are `decomposeOver_cover` and `decomposeOver_correct`.
+- `decomposeOver_cell_model` gives a homeomorphism from each cell to a
+  product of three points or intervals. `decomposeOver_cylindrical`
+  verifies both lower-dimensional projections.
+- `Quartic.solve` accepts a checked planar diagram for the embedded
+  `Quartic.projection` polynomials. Build one from a
+  `Plane.LiftingData` certificate. An optional `Quartic.SampleTables`
+  argument supplies exact vertical root lists. `RootTable.ofCutTable`
+  converts a checked univariate covering table by retaining its roots.
+- `Quartic.solve_component_correct` checks connected-component labels
+  from a supplied closure-incidence matrix. `decomposeComponents`
+  defines the mathematical labels from the cell closures.
+
+The decision program computes the common vertical divisor by testing its
+leading coefficients and taking pseudo-remainders. It removes multiplicities
+from the common divisor, and projects only the distinct nonconstant
+coefficient tests that survive constant pruning. Each planar cell chooses
+the same branch everywhere. A nonzero constant gives an empty fiber, a
+linear root gives a height by division, and higher degrees use ordered
+continuous root sections. When both equations vanish as polynomials in
+`z`, the solver lifts the entire vertical cylinder.
+
+The examples check crossing lines defined by repeated factors, an
+intersection with an entire nullified vertical line, and a degree drop
+where the intersection leaves the fiber. The total solver uses
+noncomputable real root and closure operations. A standalone backend for
+general real-algebraic decompositions and automatic refinement to the
+frontier condition are open.
 
 ## Lean entry points
 
