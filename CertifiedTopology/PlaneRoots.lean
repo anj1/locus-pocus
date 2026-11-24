@@ -22,6 +22,51 @@ structure RootFamily (B : Type) [TopologicalSpace B] where
   simple : ∀ x y, (poly x).eval y = 0 → (poly x).derivative.eval y ≠ 0
   locally_bounded : ∀ x, ∃ M : ℝ, ∀ᶠ u in 𝓝 x, ∀ y, (poly u).eval y = 0 → y ∈ Icc (-M) M
 
+/-- A continuous polynomial family of fixed degree has a local Cauchy
+    bound, including when the same formula has higher degree off the base. -/
+noncomputable def RootFamily.ofCoefficients {B : Type} [TopologicalSpace B]
+    (p : B → Polynomial ℝ) (n : ℕ) (hc : ∀ i, Continuous (fun b => (p b).coeff i))
+    (hd : ∀ b, (p b).natDegree = n) (hn : ∀ b, p b ≠ 0)
+    (hs : ∀ b z, (p b).eval z = 0 → (p b).derivative.eval z ≠ 0) : RootFamily B := by
+  have evalCont (q : B → Polynomial ℝ) (bound : ℕ)
+      (coeffCont : ∀ i, Continuous (fun b => (q b).coeff i))
+      (degreeBound : ∀ b, (q b).natDegree ≤ bound) :
+      Continuous fun x : B × ℝ => (q x.1).eval x.2 := by
+    have eq : (fun x : B × ℝ => (q x.1).eval x.2) =
+        fun x => ∑ i ∈ Finset.range (bound+1), (q x.1).coeff i * x.2^i := by
+      funext x
+      exact eval_eq_sum_range' (Nat.lt_succ_of_le (degreeBound x.1)) x.2
+    rw [eq]
+    exact continuous_finsetSum _ fun i _ => ((coeffCont i).comp continuous_fst).mul
+      (continuous_snd.pow i)
+  refine ⟨p, hn, evalCont p n hc (fun b => (hd b).le), ?_, hs, ?_⟩
+  · apply evalCont (fun b => (p b).derivative) n
+    · intro i
+      simp only [coeff_derivative]
+      exact (hc (i+1)).mul continuous_const
+    · exact fun b => (natDegree_derivative_le (p b)).trans ((Nat.sub_le _ _).trans (hd b).le)
+  · intro b
+    open scoped NNReal in
+    have cb : Continuous (fun x => (p x).cauchyBound) := by
+      have e : (fun x => (p x).cauchyBound) = fun x =>
+          (Finset.range n).sup (fun i => ‖(p x).coeff i‖₊) / ‖(p x).coeff n‖₊ + 1 := by
+        funext x
+        rw [cauchyBound, leadingCoeff, hd x]
+      rw [e]
+      apply Continuous.add ?_ continuous_const
+      apply (Continuous.finset_sup_apply (fun i _ => (hc i).nnNorm)).div₀ (hc n).nnNorm
+      intro x hz
+      exact (leadingCoeff_ne_zero.mpr (hn x))
+        (by rw [leadingCoeff, hd x]; exact nnNorm_eq_zero.mp hz)
+    let M := ((p b).cauchyBound : ℝ) + 1
+    have ev : ∀ᶠ x in 𝓝 b, ((p x).cauchyBound : ℝ) < M :=
+      (isOpen_lt (NNReal.continuous_coe.comp cb) continuous_const).mem_nhds (by dsimp [M]; linarith)
+    refine ⟨M, ev.mono fun x hx y hy => ?_⟩
+    have hb : ‖y‖ < ((p x).cauchyBound : ℝ) := (IsRoot.norm_lt_cauchyBound (hn x) hy)
+    rw [Real.norm_eq_abs] at hb
+    obtain ⟨hl, hu⟩ := abs_lt.mp (hb.trans hx)
+    exact ⟨hl.le, hu.le⟩
+
 namespace RootFamily
 
 variable {B : Type} [TopologicalSpace B] (P : RootFamily B)
@@ -217,6 +262,39 @@ theorem continuous_section [PreconnectedSpace B] (sample : B) (i : Fin (P.roots 
   change dist (P.rootSection sample i u) (P.rootSection sample i x) < ε
   rw [← congrFun hf i]
   exact h _
+
+/-- Ownership of a continuous section by a subfamily is constant whenever
+    both sets of roots persist and every root of the subfamily is shared. -/
+theorem section_membership {B : Type} [TopologicalSpace B] [PreconnectedSpace B]
+    (P Q : RootFamily B) (subset : ∀ x, Q.roots x ⊆ P.roots x)
+    (r : B → ℝ) (hr : Continuous r) (hm : ∀ x, r x ∈ P.roots x) (a b : B) :
+    r a ∈ Q.roots a ↔ r b ∈ Q.roots b := by
+  have lc : IsLocallyConstant (fun x => r x ∈ Q.roots x) := by
+    rw [IsLocallyConstant.iff_eventually_eq]
+    intro x
+    by_cases hx : r x ∈ Q.roots x
+    · obtain ⟨l, u, hi⟩ := P.root_box ((P.mem_roots x _).mp (hm x)) zero_lt_one
+      let ε := min (r x-l) (u-r x)
+      have hε : 0 < ε := lt_min (sub_pos.mpr hi.2.1) (sub_pos.mpr hi.2.2.1)
+      have region : ∀ᶠ y in 𝓝 x, r y ∈ Ioo l u :=
+        (isOpen_Ioo.preimage hr).mem_nhds ⟨hi.2.1, hi.2.2.1⟩
+      filter_upwards [hi.2.2.2.2, region, Q.eventually_match x hε] with y uniqu hy ⟨e, close⟩
+      let t := e ⟨r x,hx⟩
+      have near := close ⟨r x,hx⟩
+      change dist (t : ℝ) (r x) < ε at near
+      rw [Real.dist_eq, abs_lt] at near
+      have ht : (t : ℝ) ∈ Ioo l u := by
+        have h₁ : ε ≤ r x-l := min_le_left _ _
+        have h₂ : ε ≤ u-r x := min_le_right _ _
+        exact ⟨by linarith [near.1], by linarith [near.2]⟩
+      have eq := uniqu.unique ⟨ht, (P.mem_roots y _).mp (subset y t.property)⟩
+        ⟨hy, (P.mem_roots y _).mp (hm y)⟩
+      exact propext ⟨fun _ => hx, fun _ => eq ▸ t.property⟩
+    · have hc := Q.eval_continuous.comp (continuous_id.prodMk hr)
+      have hn := fun h => hx ((Q.mem_roots x _).mpr h)
+      filter_upwards [(isOpen_ne_fun hc continuous_const).mem_nhds hn] with y hy
+      exact propext ⟨fun hz => (hy ((Q.mem_roots y _).mp hz)).elim, fun hz => (hx hz).elim⟩
+  exact Iff.of_eq (lc.apply_eq_of_preconnectedSpace a b)
 
 end RootFamily
 end CertifiedTopology.Plane

@@ -39,6 +39,22 @@ theorem aff_injective : Function.Injective (aff φ (n := n)) := by
     rintro ⟨b,a⟩ ⟨d,e⟩ h
     exact Prod.ext (ih (congrArg Prod.fst h)) (φ.injective (congrArg Prod.snd h))
 
+omit [LinearOrder K] [LinearOrder L] [IsStrictOrderedRing K] [IsStrictOrderedRing L] in
+theorem cell_injective : Function.Injective (cell φ (n := n)) := by
+  induction n with
+  | zero => intro c d _; cases c; cases d; rfl
+  | succ n ih =>
+    rintro ⟨_⟩ ⟨_⟩ h
+    rename_i b s d t
+    simp only [cell, Cell.lift.injEq] at h
+    obtain rfl := ih h.1
+    congr 1
+    have opt : Function.Injective (Option.map (aff φ (n := n))) :=
+      by
+        intro a b h
+        cases a <;> cases b <;> simp_all [(aff_injective φ).eq_iff]
+    cases s <;> cases t <;> simp_all [slice, (aff_injective φ).eq_iff, opt.eq_iff]
+
 @[simp] theorem eval_map (f : Aff K n) (p : Point K n) :
     Aff.eval (aff φ f) (point φ p) = φ (Aff.eval f p) := by
   induction n with

@@ -130,11 +130,6 @@ def edges {n : ℕ} (edge : Fin n → Fin n → Bool) : List (Fin n × Fin n) :=
   (List.finRange n).flatMap fun i =>
     ((List.finRange n).filter (edge i)).map (fun j => (i, j))
 
-private theorem mem_edges (d : ClosureIncidence cells) (e : Fin n × Fin n) :
-    e ∈ edges d.edge ↔ (graph cells).Adj e.1 e.2 := by
-  rcases e with ⟨i,j⟩
-  simp [edges, List.mem_flatMap, d.correct]
-
 /-- Merge labels once per edge. This computes components from the checked
     incidence matrix without enumerating graph walks. -/
 def computeLabels {n : ℕ} (edge : Fin n → Fin n → Bool) : Vector (Fin n) n :=
@@ -170,11 +165,15 @@ private theorem fold_merges {n : ℕ} (es : List (Fin n × Fin n))
     · exact fold_preserves es _ (merge_edge initial e)
     · exact ih _ h
 
-theorem same_label (d : ClosureIncidence cells) (i j : Fin n) :
-    d.labels.get i = d.labels.get j ↔ (graph cells).Reachable i j := by
+theorem computeLabels_correct (G : SimpleGraph (Fin n)) (edge : Fin n → Fin n → Bool)
+    (correct : ∀ i j, edge i j = true ↔ G.Adj i j) (i j : Fin n) :
+    (computeLabels edge).get i = (computeLabels edge).get j ↔ G.Reachable i j := by
+  have mem (e : Fin n × Fin n) : e ∈ edges edge ↔ G.Adj e.1 e.2 := by
+    rcases e with ⟨u,v⟩
+    simp [edges, List.mem_flatMap, correct]
   constructor
-  · unfold labels computeLabels
-    apply fold_sound (edges d.edge) (fun _ h => (d.mem_edges _).mp h)
+  · unfold computeLabels
+    apply fold_sound (edges edge) (fun _ h => (mem _).mp h)
       (Vector.ofFn id) _ i j
     intro a b h
     have : a = b := by simpa only [get_ofFn, id_eq] using h
@@ -185,18 +184,26 @@ theorem same_label (d : ClosureIncidence cells) (i j : Fin n) :
     induction h with
     | refl => rfl
     | @tail a b _ hab ih =>
-      exact ih.trans (fold_merges (edges d.edge) (Vector.ofFn id) (a,b) ((d.mem_edges _).mpr hab))
+      exact ih.trans (fold_merges (edges edge) (Vector.ofFn id) (a,b) ((mem _).mpr hab))
+
+theorem same_label (d : ClosureIncidence cells) (i j : Fin n) :
+    d.labels.get i = d.labels.get j ↔ (graph cells).Reachable i j :=
+  computeLabels_correct _ _ d.correct i j
+
+end ClosureIncidence
 
 /-- For a closed locus, cells bearing one label form the connected
     component of every point in those cells. -/
-theorem component_correct {S : Set X} (d : ClosureIncidence cells)
+theorem connectedComponentIn_eq_cells {cells : Fin n → Set X} {S : Set X}
     (hclosed : IsClosed S) (cover : ∀ x, x ∈ S ↔ ∃ j, x ∈ cells j)
-    (hconn : ∀ j, IsPreconnected (cells j)) (i : Fin n) {x : X} (hx : x ∈ cells i) :
+    (hconn : ∀ j, IsPreconnected (cells j)) (i : Fin n) {x : X} (hx : x ∈ cells i)
+    (selected : Fin n → Prop)
+    (correct : ∀ j, selected j ↔ (graph cells).Reachable i j) :
     connectedComponentIn S x =
-      ⋃ j : {j // d.labels.get i = d.labels.get j}, cells j.val := by
+      ⋃ j : {j // selected j}, cells j.val := by
   rw [connectedComponentIn_eq_closures hclosed cover hconn i hx]
   ext y
-  simp only [mem_iUnion, Subtype.exists, exists_prop, d.same_label]
+  simp only [mem_iUnion, Subtype.exists, exists_prop, correct]
   constructor
   · rintro ⟨j, hj, hy⟩
     have sub : closure (cells j) ⊆ S :=
@@ -210,5 +217,11 @@ theorem component_correct {S : Set X} (d : ClosureIncidence cells)
   · rintro ⟨j, hj, hy⟩
     exact ⟨j, hj, subset_closure hy⟩
 
-end ClosureIncidence
+theorem ClosureIncidence.component_correct {cells : Fin n → Set X} {S : Set X}
+    (d : ClosureIncidence cells) (hclosed : IsClosed S) (cover : ∀ x, x ∈ S ↔ ∃ j, x ∈ cells j)
+    (hconn : ∀ j, IsPreconnected (cells j)) (i : Fin n) {x : X} (hx : x ∈ cells i) :
+    connectedComponentIn S x =
+      ⋃ j : {j // d.labels.get i = d.labels.get j}, cells j.val :=
+  connectedComponentIn_eq_cells hclosed cover hconn i hx _ (d.same_label i)
+
 end CertifiedTopology.ClosureComponents

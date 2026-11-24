@@ -300,7 +300,7 @@ private theorem simple_of_constant_derivativeGCD {f g : Polynomial F}
   rw [eval_C] at ev
   exact hn (e.trans (C_eq_zero.mpr ev))
 
-private theorem quotient_roots [CharZero F] {f g q : Polynomial F} {a : F}
+theorem quotient_roots [CharZero F] {f g q : Polynomial F} {a : F}
     (ha : a ≠ 0) (hf : f ≠ 0) (hd : f.derivative ≠ 0)
     (hg : CommonDivisors f f.derivative g) (he : C a * f = q * g) :
     q ≠ 0 ∧ (∀ t, q.IsRoot t ↔ f.IsRoot t) ∧

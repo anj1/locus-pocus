@@ -1,18 +1,107 @@
 # Certified topology of algebraic families
 
-This Lean 4 project constructs sign-invariant cylindrical decompositions for several input classes. It also certifies how the topology of a quadratic zero fiber varies with a polynomial parameter. Parameter coordinates come first in the cylindrical order. Topological statements use the usual Euclidean topology.
+This Lean 4 project computes sign-invariant cylindrical algebraic decompositions over real algebraic coefficients. It also certifies how the topology of a quadratic zero fiber varies with a polynomial parameter. Parameter coordinates come first in cylindrical order. Topological statements use the usual Euclidean topology.
 
 | Input | Computation | Lean guarantee |
 | --- | --- | --- |
 | Boolean combinations of signs of products of affine forms, in any dimension | Exact projection and lifting over an ordered field. Executable over the rationals. | Every point belongs to a unique cell, each cell contains its sample, and all factor signs are constant there. The selected cells describe the formula exactly. Every real output cell is convex and contractible. |
-| Finite lists of rational univariate polynomials, arbitrary degree | Exact rational root isolation and sign-table certificate generation | The ordered sections and open intervals partition the real line. Every sign in every row agrees with evaluation everywhere on that row. |
+| Univariate polynomials over an executable ordered field embedded in ℝ | Squarefree reduction and adaptive dyadic isolation in Lean | The algorithm terminates and isolates every distinct real root in order. Zero polynomials and roots on subdivision endpoints are handled explicitly. |
 | One equation `a(x)y² + b(x)y + c(x) = 0`, with rational polynomial coefficients of any degree in `x` | Project the three coefficients and their discriminant, then classify each base cell | A fiber-preserving homeomorphism of the cylinder identifies the family on each cell with a fixed model. The model is empty, a point, two points, or the whole line. |
 | Finite lists of real bivariate polynomials | Squarefree projection, univariate root isolation over ℝ, and continuous root lifting. | Every point lies in exactly one cell, all input signs are constant on each cell, and the cells project cylindrically. Each cell is homeomorphic to a product of two real intervals or points. |
 | Two real quadric equations in three variables | Exact vertical fiber decisions with specialized planar fast paths and the general planar CAD as a fallback. | The cells partition the intersection. Each has a sample and is contractible. Certified closure incidences determine the connected components of the whole intersection. |
-| Two real polynomial equations of total degree at most four in three variables | Fraction-free vertical decisions, a planar CAD for the coefficient tests, and continuous lifting of the common roots. | An exact cylindrical partition of the intersection. Each cell has a sample and a product model. Checked closure incidences give the connected components. |
+| Two polynomial equations with real algebraic coefficients of total degree at most four in three variables | Exact root isolation over finite algebraic extensions, fraction-free projection, lifting from exact samples, and frontier refinement. | A cylindrical partition with Euclidean cell models, exact connected components, and a finite locally closed stratification with a certified closure table. |
 | Univariate formulas with arbitrary real coefficients | Lean's mathematical root multiset and a one-dimensional CAD | A total, noncomputable specification with an exact solution-set theorem. |
 
-The general planar, quadric, and quartic decompositions are total, noncomputable Lean constructions. The checked pipeline accepts root tables and closure incidences from a backend. A standalone executable backend for general real-algebraic root isolation and closure incidence, and automatic refinement to a stratification satisfying the frontier condition, remain open.
+The executable solver is in `CertifiedTopology.ComputedInput`. Earlier mathematical constructions over arbitrary real coefficients and their certificate interfaces remain available.
+
+## Compute an intersection from input
+
+`scripts/intersection.py` takes two sparse polynomial equations in three
+variables. A term is `[x exponent, y exponent, z exponent, coefficient]` and its
+total degree must be at most four. Coefficients can be integers, finite decimals,
+or rational strings. An algebraic coefficient can be written as
+`{"polynomial": [-2, 0, 1], "root": 1}`, which denotes the positive root of
+`x² − 2`. The polynomial uses ascending powers and the zero-based index counts
+distinct real roots in increasing order. An empty equation list denotes the
+zero polynomial.
+
+```sh
+source ~/src/lean/env.sh
+cat > /tmp/intersection.json <<'EOF'
+[
+  [[0, 1, 0, 1], [4, 0, 0, -1]],
+  [[0, 0, 2, 1], [3, 0, 0, -1], [4, 0, 0, 1]]
+]
+EOF
+python3 scripts/intersection.py /tmp/intersection.json --stratify --lean /tmp/Intersection.lean
+lake env lean /tmp/Intersection.lean
+```
+
+This input defines a compact cusp on the graph `y = x⁴`. The command derives its
+cells, directed closure incidences, and connected components. The report uses
+zero-based cell indices. Each `closure` array lists all cells contained in the
+closure of its row's cell, including that cell itself. Equal `component` values
+identify cells in the same connected component.
+
+- The affine route searches for rational affine factors of the expanded
+  equations. Lean verifies the factorization identities and computes the CAD,
+  samples, closure table, and labels in exact rational arithmetic.
+- The polynomial graph route tries coordinate permutations and eliminates one
+  variable using a constant linear coefficient. It can expose the linear
+  coefficient by subtracting a rational multiple of the other equation. It
+  supports a graph in the remaining height or a shifted second or fourth power
+  of the height with constant leading coefficient. The report's `axes` gives
+  the original coordinate indices in the order parameter, eliminated
+  coordinate, height. The `graph` array is indexed by the height exponent.
+  Its entries, `center`, and `radicand` use ascending powers of the parameter.
+  Each lifted cell references a base row and a branch of the indicated root.
+  Lean checks the elimination identities, the real root isolations, and the
+  closure tests against the real intervals, then computes the lifted topology.
+
+For the affine and graph routes, Lean proves that every cell is locally closed
+and contractible and that every point of the original locus belongs to exactly
+one cell. The generated file exports `CertifiedIntersection.artifact`,
+`CertifiedIntersection.locus`, and `CertifiedIntersection.certified`.
+`TopologyArtifact.Valid.closure_eq` identifies each cell closure with the
+reported union. `TopologyArtifact.Valid.component_correct` identifies each
+reported component with the connected component in the original real locus.
+
+The general `cad` route computes directly from the sparse input. Projection
+uses degree, squarefree, and pairwise common-root decisions. Lifting isolates
+the exact sample fibers, including nullified fibers and degree drops. The
+report numbers rows from zero, with sectors at even indices and root sections
+at odd indices. Rational reports include the nested ascending coefficients of
+each row's root source. The generated Lean artifact retains the exact cell
+codes for algebraic inputs as well. Its `inputLocus` interprets coefficients
+using the specified root indices. `certifiedCoefficients` checks those indices,
+and `certified` identifies the computed cell partition with `inputLocus`.
+
+On the CAD route, `closure_overlap` lists the other cells whose ambient
+closures intersect the row's closure. `ComputedTopology.Intersection.closure_correct`
+certifies a first-order formula for each entire closure, and
+`ComputedTopology.Intersection.component_correct` identifies each label with
+the actual connected component.
+
+Use `--stratify` to compute a frontier-compatible refinement of the
+cylindrical partition. Its `strata` array gives each stratum's dimension and
+the indices of the strata making up its closure. Lean proves that these sets
+partition the input locus and that each stratum is locally closed and
+homeomorphic to an open subset of the reported Euclidean dimension.
+The generated Lean artifact exports `certifiedStrata` and
+`certifiedStratumClosure` and retains each stratum's exact formula.
+On the affine and power-graph routes, the reported cells already satisfy
+the frontier condition.
+
+Refinement computes the boundaries of the CAD cells and recurses on a
+residual of strictly smaller dimension. At each stage it respects the
+closures of all earlier strata. Closure decisions and general refinement
+can dominate runtime, especially for curved cells that require quantified
+CAD.
+
+`CADDecision.stratify` accepts a Boolean or quantified semialgebraic formula
+over the same exact coefficient fields. Its `relativeClosure_eq` theorem
+describes which strata make up the closure inside the input set, including
+when the input set is open or locally closed.
 
 ## Run
 
@@ -29,6 +118,7 @@ python3 scripts/univariate.py examples/shared-roots.json
 python3 scripts/univariate.py --quadratic-family examples/cusp.json --lean /tmp/Cusp.lean
 lake env lean /tmp/Cusp.lean
 python3 tests/test_certificates.py
+lake env lean tests/ExecutableIsolation.lean
 ```
 
 The cusp input is `[[1], [], [0, 0, 0, -1]]`. It represents `y² − x³ = 0`. The command returns three base cells. For negative `x` the fiber is empty, at zero it is a point, and for positive `x` it consists of two points. The generated certificate identifies the exceptional parameter as the unique root of its projection polynomial in the reported rational isolating interval.
@@ -41,7 +131,9 @@ The command emits JSON after Lean checks the generated certificate. Each section
 
 The affine solver recognizes sums, negations, products of affine factors, and scalar multiplication. Projection retains vertical constraints and compares each unordered pair of distinct root functions. It removes duplicates and globally constant projections before recursion. Lifting orders roots at each base sample, merges coincident roots, and alternates sections with open sectors. The projection proof transports the root ordering to every point of the base cell, including lower-dimensional cells. Boolean evaluation then uses one sample per cell.
 
-The univariate search forms a common square-free root polynomial. It certifies the two tails by a change of variable and subdivides bounded intervals using exact Bernstein coefficients. A root box has a sign change and a derivative of fixed strict sign in its interior. Lean checks the polynomial identities, the intermediate-value and monotonicity arguments, the absence of other roots, and each input sign. Shared and even-multiplicity roots receive their own sections. The Python search, JSON parser, and report renderer are outside Lean. Search termination and runtime bounds for the Python program have no Lean proof. The generated Lean certificate exports `CertifiedDiagram.diagram` and the ordered root table `CertifiedDiagram.cutTable`. Family certificates also contain `familyDiagram`, `fibers`, and `reportedKinds`.
+The general intersection solver uses `ExecutableIsolation.isolate`. Lean computes a squarefree part and a rational root bound, then bisects intervals using exact Horner bounds for the polynomial and its derivative. Lean proves that subdivision terminates and that the returned windows contain every distinct real root exactly once in order. This also works in the exact algebraic extensions used during lifting.
+
+The older `scripts/univariate.py` certificate generator uses a common squarefree root polynomial and exact Bernstein coefficients. Lean checks the polynomial identities, the intermediate-value and monotonicity arguments, the absence of other roots, and each input sign. The Python generator computes candidate certificates, parses JSON, and renders reports. Its generated Lean certificate exports `CertifiedDiagram.diagram` and the ordered root table `CertifiedDiagram.cutTable`. Family certificates also contain `familyDiagram`, `fibers`, and `reportedKinds`.
 
 ## Planar decomposition
 
@@ -192,12 +284,33 @@ linear root gives a height by division, and higher degrees use ordered
 continuous root sections. When both equations vanish as polynomials in
 `z`, the solver lifts the entire vertical cylinder.
 
-The examples check crossing lines defined by repeated factors, an
-intersection with an entire nullified vertical line, and a degree drop
-where the intersection leaves the fiber. The total solver uses
-noncomputable real root and closure operations. A standalone backend for
-general real-algebraic decompositions and automatic refinement to the
-frontier condition are open.
+The examples in this section check crossing lines defined by repeated factors,
+an intersection with an entire nullified vertical line, and a degree drop
+where the intersection leaves the fiber. These older entry points specify
+the real root and closure operations mathematically. The executable entry
+points are `ComputedInput.solve` and `ComputedInput.solveStrata`.
+
+### Quartic stress examples
+
+[The eight-panel quartic gallery](examples/quartic-stress.pdf) shows a
+tacnode, a compact cusp, a four-height fiber with coalescences, four skew
+lines with intersecting projections, three sheets meeting a nullified
+vertical line, a branch that escapes at a degree drop, an oval with an
+isolated point, and a smooth nonplanar loop.
+
+Lean checks the entire locus and uniqueness of the covering cell for each
+pair of equations. The renderer evaluates analytic parametrizations and
+checks the sampled coordinates against both equations exported by Lean.
+It clips unbounded curves and sheets to the plot windows.
+
+Regenerate the PDF with Lean, NumPy, and Matplotlib.
+
+```sh
+source ~/src/lean/env.sh
+lake build
+lake env lean --run examples/QuarticStress.lean > /tmp/quartic-stress-inputs.json
+python3 examples/plot_quartic_stress.py /tmp/quartic-stress-inputs.json examples/quartic-stress.pdf
+```
 
 ## Lean entry points
 

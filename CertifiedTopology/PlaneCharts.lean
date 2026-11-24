@@ -95,7 +95,7 @@ noncomputable def Chart.cellWithCuts {ps : List (BiPoly ℝ)} {s : Slice ℝ} (d
       let := (convex_strip t).contractibleSpace ⟨y.val, y.property⟩
       exact e.contractibleSpace }
 
-private theorem same_sign_of_zero {α : Type} [TopologicalSpace α] [PreconnectedSpace α]
+theorem same_sign_of_zero {α : Type} [TopologicalSpace α] [PreconnectedSpace α]
     {f : α → ℝ} (hc : Continuous f) (p q : α) (hz : ∀ x, f x = 0 ↔ f q = 0) :
     side (f p) 0 = side (f q) 0 := by
   by_cases hq : f q = 0
